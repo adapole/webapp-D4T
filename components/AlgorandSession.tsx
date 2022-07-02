@@ -4,7 +4,7 @@ import {
 	SignedTxn,
 	PermissionResult,
 } from 'algorand-session-wallet';
-import algosdk from 'algosdk';
+import algosdk, { Transaction } from 'algosdk';
 import { useState } from 'react';
 import {
 	apiGetTxnParams,
@@ -97,15 +97,33 @@ export default function AlgorandSession() {
 			appID: contract.networks['default'].appID,
 			sender: sw.getDefaultAccount(),
 			suggestedParams: suggested,
-			OnComplete: algosdk.OnApplicationComplete.OptInOC,
+			//OnComplete: algosdk.OnApplicationComplete.OptInOC,
 			signer: sw.getSigner(),
 		};
 		const comp = new algosdk.AtomicTransactionComposer();
 
 		// Simple ABI Calls with standard arguments, return type
-		comp.addMethodCall({
+		/* comp.addMethodCall({
 			method: getMethodByName('optin'),
 			methodArgs: [84436122],
+			...commonParams,
+		}); */
+		// Create a transaction
+		const ptxn = new Transaction({
+			from: sw.getDefaultAccount(),
+			to: sw.getDefaultAccount(),
+			amount: 10000,
+			note: new Uint8Array(Buffer.from('testing')),
+			suggestedParams: suggested,
+		});
+		// Construct TransactionWithSigner
+		const tws = {
+			txn: ptxn,
+			signer: sw.getSigner(),
+		};
+		comp.addMethodCall({
+			method: getMethodByName('testtxn'),
+			methodArgs: [tws, 'something'],
 			...commonParams,
 		});
 		//const pay_txn = getPayTxn(suggested, sw.getDefaultAccount());
