@@ -711,20 +711,10 @@ const Main = (props: Props) => {
 			txn: ptxn,
 			signer: algosdk.makeLogicSigAccountTransactionSigner(lsig),
 		};
-
+		comp.addTransaction(tws);
 		comp.addMethodCall({
 			method: getMethodByName('borrow'),
-			methodArgs: [
-				tws,
-				xids,
-				camt,
-				lamt,
-				addressLogicSig,
-				xids[0],
-				DUSD,
-				MNG,
-				LQT,
-			],
+			methodArgs: [xids, camt, lamt, addressLogicSig, xids[0], DUSD, MNG, LQT],
 			...commonParams,
 		});
 		//const pay_txn = getPayTxn(suggested, sw.getDefaultAccount());
