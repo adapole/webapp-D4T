@@ -656,6 +656,23 @@ const Main = (props: Props) => {
 			if (m === undefined) throw Error('Method undefined: ' + name);
 			return m;
 		}
+		const signer = getSignerWC(connector, address);
+		suggested.flatFee = true;
+		suggested.fee = 4000;
+		let acct = algosdk.mnemonicToSecretKey(
+			process.env.NEXT_PUBLIC_MEMONIC_VUI as string
+		);
+		// We initialize the common parameters here, they'll be passed to all the transactions
+		// since they happen to be the same
+		const commonParams = {
+			appID: contract.networks['default'].appID,
+			sender: acct.addr,
+			suggestedParams: suggested,
+			onComplete: OnApplicationComplete.NoOpOC,
+			signer, //: algosdk.makeBasicAccountTransactionSigner(acct),
+		};
+		const comp = new algosdk.AtomicTransactionComposer();
+		//'QmNU1gEgZKnMAL9gEWdWXAmuaDguUFhbGYqLw4p1iCGrSc' //'QmRY9HMe2fb6HAJhywnTTYQamLxQV9qJbjVeK7Wa314TeR' 'QmdvvuGptFDAoB6Vf9eJcPeQTKi2MjA3AnEv47syNPz6CS'
 		const borrowLogic = await borrowGetLogic(
 			'QmXJWc7jeSJ7F2Cc4cm6SSYdMnAiCG4M4gfaiQXvDbdAbL' //'QmWFR6jSCaqfxjVK9S3PNNyyCh35kYx5sGgwi7eZAogpD9' //'QmciTBaxmKRF9fHjJP7q83f9nvBPf757ocbyEvTnrMttyM' //'QmdHj2MHo6Evzjif3RhVCoMV2RMqkxvcZqLP946cN77ZEN' //'QmfWfsjuay1tJXJsNNzhZqgTqSj3CtnMGtu7NK3bVtdh6k' //'QmPubkotHM9iArEoRfntSB6VwbYBLz19c1uxmTp4FYJzbk' //'QmaDABqWt3iKso3YjxRRBCj4HJqqeerAvrBeLTMTTz7VzY' //'QmbbDFKzSAbBpbmhn9b31msyMz6vnZ3ZvKW9ebBuUDCyK9' //'QmYoFqC84dd7K5nCu5XGyWGyqDwEs7Aho8j46wqeGRfuJq' //'QmaGYNdQaj2cygMxxDQqJie3vfAJzCa1VBstReKY1ZuYjK'
 		);
@@ -679,30 +696,6 @@ const Main = (props: Props) => {
 		let lsig = algosdk.LogicSigAccount.fromByte(borrowLogicSig);
 		console.log(lsig.verify());
 		console.log(lsig.toByte());
-
-		const signer = getSignerWC(
-			connector,
-			address,
-			algosdk.makeLogicSigAccountTransactionSigner(lsig)
-		);
-
-		suggested.flatFee = true;
-		suggested.fee = 4000;
-		let acct = algosdk.mnemonicToSecretKey(
-			process.env.NEXT_PUBLIC_MEMONIC_VUI as string
-		);
-		// We initialize the common parameters here, they'll be passed to all the transactions
-		// since they happen to be the same
-		const commonParams = {
-			appID: contract.networks['default'].appID,
-			sender: acct.addr,
-			suggestedParams: suggested,
-			onComplete: OnApplicationComplete.NoOpOC,
-			signer, //: algosdk.makeBasicAccountTransactionSigner(acct),
-		};
-		const comp = new algosdk.AtomicTransactionComposer();
-		//'QmNU1gEgZKnMAL9gEWdWXAmuaDguUFhbGYqLw4p1iCGrSc' //'QmRY9HMe2fb6HAJhywnTTYQamLxQV9qJbjVeK7Wa314TeR' 'QmdvvuGptFDAoB6Vf9eJcPeQTKi2MjA3AnEv47syNPz6CS'
-
 		suggestedParams.flatFee = true;
 		suggestedParams.fee = 0;
 		const ptxn = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({
@@ -767,7 +760,7 @@ const Main = (props: Props) => {
 			if (m === undefined) throw Error('Method undefined: ' + name);
 			return m;
 		}
-		const signer = getSignerWC(connector, address, null);
+		const signer = getSignerWC(connector, address);
 		suggested.flatFee = true;
 		suggested.fee = 3000;
 		// We initialize the common parameters here, they'll be passed to all the transactions
@@ -822,8 +815,7 @@ const Main = (props: Props) => {
 	async function walletConnectSigner(
 		txns: Transaction[],
 		connector: WalletConnect | null,
-		address: string,
-		signer: algosdk.TransactionSigner | null
+		address: string
 	) {
 		if (!connector) {
 			console.log('No connector found!');
@@ -838,13 +830,8 @@ const Main = (props: Props) => {
 			const encodedTxn = Buffer.from(
 				algosdk.encodeUnsignedTransaction(txn)
 			).toString('base64');
-			if (!signer) {
-				if (algosdk.encodeAddress(txn.from.publicKey) !== address)
-					return { txn: encodedTxn, signer: [] };
-				return { txn: encodedTxn };
-			}
 			if (algosdk.encodeAddress(txn.from.publicKey) !== address)
-				return { txn: encodedTxn, signer: signer };
+				return { txn: encodedTxn };
 			return { txn: encodedTxn };
 		});
 		// sign transaction
@@ -869,12 +856,11 @@ const Main = (props: Props) => {
 	}
 	function getSignerWC(
 		connector: WalletConnect,
-		address: string,
-		signer: algosdk.TransactionSigner | null
+		address: string
 	): TransactionSigner {
 		return async (txnGroup: Transaction[], indexesToSign: number[]) => {
 			const txns = await Promise.resolve(
-				walletConnectSigner(txnGroup, connector, address, signer)
+				walletConnectSigner(txnGroup, connector, address)
 			);
 			return txns.map((tx) => {
 				return tx.blob;
