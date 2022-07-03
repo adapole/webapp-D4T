@@ -6,7 +6,6 @@ import Navbar from '../components/Navbar';
 const Main = dynamic(() => import('../components/Main'), {
 	ssr: false,
 });
-import { useEffect, useState } from 'react';
 import {
 	apiGetAccountAssets,
 	ChainType,
@@ -23,13 +22,8 @@ import { IInternalEvent } from '@walletconnect/types';
 import MyAlgoConnect from '@randlabs/myalgo-connect';
 import { addressContext } from '../lib/helpers/addressContext';
 import Header from '../components/Header';
+import React from 'react';
 
-const DynamicComponent = dynamic(
-	() => import('../components/AlgorandSession'),
-	{
-		ssr: false,
-	}
-);
 export interface IResult {
 	method: string;
 	body: Array<
@@ -40,33 +34,53 @@ export interface IResult {
 		} | null>
 	>;
 }
-const Home: NextPage = () => {
-	const [connector, setConnector] = useState<WalletConnect | null>(null);
-	const [mconnector, setMConnector] = useState<MyAlgoConnect | null>(null);
-	const [connected, setConnected] = useState(false);
-	const [accounts, setAccounts] = useState<String[]>([]);
-	const [address, setAddress] = useState('');
-	const [chain, setChain] = useState<ChainType>(ChainType.TestNet);
-	const [fetching, setFetching] = useState(false);
-	const [assets, setAssets] = useState<IAssetData[]>([]);
-	const [showModal, setShowModal] = useState(false);
-	const [result, setResult] = useState<IResult | null>(null);
-	const [pendingRequest, setPendingRequest] = useState(false);
-	const [pendingSubmissions, setPendingSubmissions] = useState([]);
-	const [wc, setWc] = useState(false);
-	const DynamicComponentWithNoSSR = dynamic(
+interface IAppState {
+	connector: WalletConnect | null;
+	fetching: boolean;
+	connected: boolean;
+	showModal: boolean;
+	pendingRequest: boolean;
+	signedTxns: Uint8Array[][] | null;
+	pendingSubmissions: Array<number | Error>;
+	uri: string;
+	accounts: string[];
+	address: string;
+	result: IResult | null;
+	chain: ChainType;
+	assets: IAssetData[];
+	wc: boolean;
+	mconnector: MyAlgoConnect | null;
+}
+
+const INITIAL_STATE: IAppState = {
+	connector: null,
+	fetching: false,
+	connected: false,
+	showModal: false,
+	pendingRequest: false,
+	signedTxns: null,
+	pendingSubmissions: [],
+	uri: '',
+	accounts: [],
+	address: '',
+	result: null,
+	chain: ChainType.TestNet,
+	assets: [],
+	wc: false,
+	mconnector: null,
+};
+
+class Home extends React.Component<unknown, IAppState> {
+	public state: IAppState = {
+		...INITIAL_STATE,
+	};
+	public DynamicComponentWithNoSSR = dynamic(
 		() => import('../components/WalletSelector'),
 		{
 			ssr: false,
 		}
 	);
-	function setConnectorAsync(state: any) {
-		return new Promise((resolve: any) => {
-			setConnector(state), resolve;
-		});
-	}
-
-	const walletConnectInit = async () => {
+	public walletConnectInit = async () => {
 		// bridge url
 		const bridge = 'https://bridge.walletconnect.org';
 
@@ -75,10 +89,13 @@ const Home: NextPage = () => {
 			bridge,
 			qrcodeModal: QRCodeModal,
 		});
-		//await setStateAsync({ connector, wc: true });
-		setConnectorAsync(connector);
-		setWc(true);
-		console.log('connector');
+		await this.setStateAsync({ connector, wc: true });
+		/* clientMeta: {
+			description: 'My description ',
+			url: 'http://localhost:3000',
+			icons: ['../public/favicon.ico'],
+			name: 'The name',
+		}, */
 		// check if already connected
 		if (!connector.connected) {
 			// create new session
@@ -86,10 +103,12 @@ const Home: NextPage = () => {
 		}
 
 		// subscribe to events
-		await subscribeToEvents();
-		//await D4TAppOptin();
+		await this.subscribeToEvents();
+		//await this.JinaAppOptin();
 	};
-	const subscribeToEvents = () => {
+	public subscribeToEvents = () => {
+		const { connector } = this.state;
+
 		if (!connector) {
 			return;
 		}
@@ -102,7 +121,7 @@ const Home: NextPage = () => {
 			}
 
 			const { accounts } = payload.params[0];
-			onSessionUpdate(accounts);
+			this.onSessionUpdate(accounts);
 		});
 
 		connector.on('connect', (error, payload) => {
@@ -112,7 +131,7 @@ const Home: NextPage = () => {
 				throw error;
 			}
 
-			onConnect(payload);
+			this.onConnect(payload);
 		});
 
 		connector.on('disconnect', (error, payload) => {
@@ -122,139 +141,117 @@ const Home: NextPage = () => {
 				throw error;
 			}
 
-			onDisconnect();
+			this.onDisconnect();
 		});
 
 		if (connector.connected) {
 			const { accounts } = connector;
 			const address = accounts[0];
-
-			setConnected(true);
-			setAccounts(accounts);
-			setAddress(address);
-
-			onSessionUpdate(accounts);
+			this.setState({
+				connected: true,
+				accounts,
+				address,
+			});
+			this.onSessionUpdate(accounts);
 		}
 
-		//setState({ connector });
-		setConnector(connector);
+		this.setState({ connector });
 	};
-	const killsession = async () => {
-		//const { connector } = this.state;
+
+	public killsession = async () => {
+		const { connector } = this.state;
 		if (connector) {
 			connector.killSession();
 		}
-		resetApp();
+		this.resetApp();
 	};
-	const clearsession = async () => {
-		await InitialState();
-		await setConnectorAsync(null);
+	public clearsession = async () => {
+		await this.setStateAsync({ ...INITIAL_STATE });
 	};
-	const InitialState = async () => {
-		setConnector(null);
-		setMConnector(null);
-		setConnected(false);
-		setAccounts([]);
-		setAddress('');
-		setChain(ChainType.TestNet);
-		setFetching(false);
-		setAssets([]);
-		setShowModal(false);
-		setResult(null);
-		setPendingSubmissions([]);
-		setPendingRequest(false);
-		setWc(false);
+	public chainupdate = (newChain: ChainType) => {
+		this.setState({ chain: newChain }, this.getAccountAssets);
 	};
-	const chainupdate = (newChain: ChainType) => {
-		//this.setState({ chain: newChain }, getAccountAssets);
-		setChain(newChain);
-		getAccountAssets();
+
+	public resetApp = async () => {
+		await this.setState({ ...INITIAL_STATE });
 	};
-	const checkOptin = async () => {
-		if (!address) return;
+	public checkOptin = async () => {
+		const { address } = this.state;
 		const accountInfo = await testNetClientindexer
 			.lookupAccountAppLocalStates(address)
 			.do();
 		//console.log(accountInfo['apps-local-states']);
 		return accountInfo['apps-local-states'];
 	};
-	const onConnect = async (payload: IInternalEvent) => {
+	setStateAsync(state: any) {
+		return new Promise((resolve: any) => {
+			this.setState(state, resolve);
+		});
+	}
+	public onConnect = async (payload: IInternalEvent) => {
 		const { accounts } = payload.params[0];
 		const address = accounts[0];
-
-		setConnected(true);
-		setAccounts(accounts);
-		setAddress(address);
-
-		getAccountAssets();
+		await this.setStateAsync({
+			connected: true,
+			accounts,
+			address,
+		});
+		this.getAccountAssets();
 	};
 
-	const onDisconnect = async () => {
-		resetApp();
+	public onDisconnect = async () => {
+		this.resetApp();
 	};
 
-	const onSessionUpdate = async (accounts: string[]) => {
+	public onSessionUpdate = async (accounts: string[]) => {
 		const address = accounts[0];
+		await this.setState({ accounts, address });
 
-		setAccounts(accounts);
-		setAddress(address);
-
-		await getAccountAssets();
+		await this.getAccountAssets();
 	};
 
-	const getAccountAssets = async () => {
-		//const { address, chain } = this.state;
-
-		setFetching(true);
+	public getAccountAssets = async () => {
+		const { address, chain } = this.state;
+		this.setState({ fetching: true });
 		try {
 			// get account balances
 			const assets = await apiGetAccountAssets(chain, address);
-
-			setFetching(false);
-			setAddress(address);
-			setAccounts(accounts);
+			await this.setStateAsync({ fetching: false, address, assets });
 		} catch (error) {
-			console.error(error);
-			//await this.setStateAsync({ fetching: false });
-			setFetching(false);
+			await this.setStateAsync({ fetching: false });
 		}
 	};
 
-	const resetApp = async () => {
-		await clearsession();
-	};
-	const toggleModal = () => {
-		setShowModal(!showModal);
-		setPendingSubmissions([]);
-	};
-
-	const connectToMyAlgo = async (accounts: any) => {
+	public toggleModal = () =>
+		this.setState({
+			showModal: !this.state.showModal,
+			pendingSubmissions: [],
+		});
+	public connectToMyAlgo = async (accounts: any) => {
 		try {
 			const address: string = accounts[0]['address'];
-			//const { chain } = this.state;
+			const { chain } = this.state;
 
-			setConnected(true);
-			setAccounts(accounts);
-			setAddress(address);
+			this.setState({
+				connected: true,
+				accounts,
+				address,
+			});
 
 			try {
 				// get account balances
 				const assets = await apiGetAccountAssets(chain, address);
-				//await this.setStateAsync({ fetching: false, address, assets });
-				setFetching(false);
-				setAddress(address);
-				setAssets(assets);
+				await this.setStateAsync({ fetching: false, address, assets });
 			} catch (error) {
-				console.error(error);
-				//await this.setStateAsync({ fetching: false });
-				setFetching(false);
+				//console.error(error);
+				await this.setStateAsync({ fetching: false });
 			}
 		} catch (err) {
-			console.error(err);
-			//await this.setStateAsync({ ...INITIAL_STATE });
+			//console.error(err);
+			await this.setStateAsync({ ...INITIAL_STATE });
 		}
 	};
-	const returnWallet = async (data: any) => {
+	public returnWallet = async (data: any) => {
 		if (!!data) {
 			try {
 				console.log(data.connector.check());
@@ -267,19 +264,26 @@ const Home: NextPage = () => {
 				console.log(accounts);
 
 				if (a['provider']['protocol'] === 'wc') {
-					await walletConnectInit();
+					// subscribe to events, if walletconnect
+					//console.log(wprovider);
+					await this.walletConnectInit();
 				} else if (a['provider']['url']) {
 					const onClearResponse = (): void => {
-						setConnected(false);
-						setAccounts([]);
-						setAddress('');
+						this.setState({
+							connected: false,
+							accounts: [],
+							address: '',
+						});
 					};
 
 					try {
-						setMConnector(data.connector);
-						await connectToMyAlgo(accounts);
+						await this.setStateAsync({
+							...INITIAL_STATE,
+							mconnector: data.connector,
+						});
+						await this.connectToMyAlgo(accounts);
 					} catch (err) {
-						console.error(err);
+						//console.error(err);
 					}
 				}
 			} catch (error) {
@@ -296,50 +300,67 @@ const Home: NextPage = () => {
 		}
 	};
 
-	return (
-		<div>
-			<Head>
-				<title>DeFi4NFT | Dapp</title>
-				<meta name='description' content='Generated by create next app' />
-				<link rel='icon' href='/favicon.ico' />
-			</Head>
-			{/* <div id='root'></div>
-			<DynamicComponent /> */}
-			<Navbar />
-			<addressContext.Provider value={{ address, accounts, chain }}>
-				<Main />
-			</addressContext.Provider>
+	public render = () => {
+		const {
+			connector,
+			chain,
+			assets,
+			address,
+			connected,
+			fetching,
+			showModal,
+			pendingRequest,
+			pendingSubmissions,
+			result,
+			wc,
+			mconnector,
+		} = this.state;
 
-			{!address && !assets.length ? (
-				<div className='flex space-x-4 items-center'>
-					<DynamicComponentWithNoSSR
-						returnWallet={returnWallet}
-						wallets={['myalgowallet', 'walletconnect']}
-					/>
-				</div>
-			) : (
-				<div></div>
-			)}
-			<Header
-				connected={connected}
-				address={address}
-				killsession={killsession}
-				chain={chain}
-				chainupdate={chainupdate}
-				wc={wc}
-				clearsession={clearsession}
-			/>
-			<ToastContainer
-				hideProgressBar={false}
-				newestOnTop
-				closeOnClick
-				rtl={false}
-				pauseOnFocusLoss
-				draggable
-				pauseOnHover
-			/>
-		</div>
-	);
-};
+		return (
+			<div>
+				<Head>
+					<title>DeFi4NFT | Dapp</title>
+					<meta name='description' content='Generated by create next app' />
+					<link rel='icon' href='/favicon.ico' />
+				</Head>
+				{/* <div id='root'></div>
+			<DynamicComponent /> */}
+				<Navbar />
+				<addressContext.Provider value={{ address, chain, wc, connector }}>
+					<Main />
+				</addressContext.Provider>
+
+				{!address && !assets.length ? (
+					<div className='flex space-x-4 items-center'>
+						<this.DynamicComponentWithNoSSR
+							returnWallet={this.returnWallet}
+							wallets={['myalgowallet', 'walletconnect']}
+						/>
+					</div>
+				) : (
+					<div></div>
+				)}
+				<Header
+					connected={connected}
+					address={address}
+					killsession={this.killsession}
+					chain={chain}
+					chainupdate={this.chainupdate}
+					wc={wc}
+					clearsession={this.clearsession}
+				/>
+				<ToastContainer
+					hideProgressBar={false}
+					newestOnTop
+					closeOnClick
+					rtl={false}
+					pauseOnFocusLoss
+					draggable
+					pauseOnHover
+				/>
+			</div>
+		);
+	};
+}
 
 export default Home;

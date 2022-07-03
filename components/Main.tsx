@@ -13,6 +13,7 @@ import {
 	testNetClientalgod,
 	testNetClientindexer,
 } from '../lib/api';
+import WalletConnect from '@walletconnect/client';
 import {
 	APP_ID,
 	DUSD,
@@ -25,6 +26,8 @@ import { addressContext } from '../lib/helpers/addressContext';
 import { encode, decode } from '@msgpack/msgpack';
 import { create } from 'ipfs-http-client';
 import { formatBigNumWithDecimals } from '../lib/helpers/utilities';
+import { SignTxnParams } from '../lib/helpers/types';
+import { formatJsonRpcRequest } from '@json-rpc-tools/utils';
 const ipfs = create({
 	host: 'ipfs.infura.io',
 	port: 5001,
@@ -52,6 +55,7 @@ interface iLender {
 const Main = (props: Props) => {
 	const AddressContext = useContext(addressContext);
 	const address = AddressContext.address;
+	const connector = AddressContext.connector;
 	const myAlgoConnect = new MyAlgoConnect({ disableLedgerNano: false });
 	const [validRound, setValidRound] = useState(2);
 	const [fileUrl, updateFileUrl] = useState(``);
@@ -652,23 +656,6 @@ const Main = (props: Props) => {
 			if (m === undefined) throw Error('Method undefined: ' + name);
 			return m;
 		}
-		//const signer = getSignerWC(connector, address);
-		suggested.flatFee = true;
-		suggested.fee = 4000;
-		let acct = algosdk.mnemonicToSecretKey(
-			process.env.NEXT_PUBLIC_MEMONIC_VUI as string
-		);
-		// We initialize the common parameters here, they'll be passed to all the transactions
-		// since they happen to be the same
-		const commonParams = {
-			appID: contract.networks['default'].appID,
-			sender: acct.addr,
-			suggestedParams: suggested,
-			onComplete: OnApplicationComplete.NoOpOC,
-			signer: algosdk.makeBasicAccountTransactionSigner(acct),
-		};
-		const comp = new algosdk.AtomicTransactionComposer();
-		//'QmNU1gEgZKnMAL9gEWdWXAmuaDguUFhbGYqLw4p1iCGrSc' //'QmRY9HMe2fb6HAJhywnTTYQamLxQV9qJbjVeK7Wa314TeR' 'QmdvvuGptFDAoB6Vf9eJcPeQTKi2MjA3AnEv47syNPz6CS'
 		const borrowLogic = await borrowGetLogic(
 			'QmXJWc7jeSJ7F2Cc4cm6SSYdMnAiCG4M4gfaiQXvDbdAbL' //'QmWFR6jSCaqfxjVK9S3PNNyyCh35kYx5sGgwi7eZAogpD9' //'QmciTBaxmKRF9fHjJP7q83f9nvBPf757ocbyEvTnrMttyM' //'QmdHj2MHo6Evzjif3RhVCoMV2RMqkxvcZqLP946cN77ZEN' //'QmfWfsjuay1tJXJsNNzhZqgTqSj3CtnMGtu7NK3bVtdh6k' //'QmPubkotHM9iArEoRfntSB6VwbYBLz19c1uxmTp4FYJzbk' //'QmaDABqWt3iKso3YjxRRBCj4HJqqeerAvrBeLTMTTz7VzY' //'QmbbDFKzSAbBpbmhn9b31msyMz6vnZ3ZvKW9ebBuUDCyK9' //'QmYoFqC84dd7K5nCu5XGyWGyqDwEs7Aho8j46wqeGRfuJq' //'QmaGYNdQaj2cygMxxDQqJie3vfAJzCa1VBstReKY1ZuYjK'
 		);
@@ -692,6 +679,30 @@ const Main = (props: Props) => {
 		let lsig = algosdk.LogicSigAccount.fromByte(borrowLogicSig);
 		console.log(lsig.verify());
 		console.log(lsig.toByte());
+
+		const signer = getSignerWC(
+			connector,
+			address,
+			algosdk.makeLogicSigAccountTransactionSigner(lsig)
+		);
+
+		suggested.flatFee = true;
+		suggested.fee = 4000;
+		let acct = algosdk.mnemonicToSecretKey(
+			process.env.NEXT_PUBLIC_MEMONIC_VUI as string
+		);
+		// We initialize the common parameters here, they'll be passed to all the transactions
+		// since they happen to be the same
+		const commonParams = {
+			appID: contract.networks['default'].appID,
+			sender: acct.addr,
+			suggestedParams: suggested,
+			onComplete: OnApplicationComplete.NoOpOC,
+			signer, //: algosdk.makeBasicAccountTransactionSigner(acct),
+		};
+		const comp = new algosdk.AtomicTransactionComposer();
+		//'QmNU1gEgZKnMAL9gEWdWXAmuaDguUFhbGYqLw4p1iCGrSc' //'QmRY9HMe2fb6HAJhywnTTYQamLxQV9qJbjVeK7Wa314TeR' 'QmdvvuGptFDAoB6Vf9eJcPeQTKi2MjA3AnEv47syNPz6CS'
+
 		suggestedParams.flatFee = true;
 		suggestedParams.fee = 0;
 		const ptxn = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({
@@ -741,6 +752,134 @@ const Main = (props: Props) => {
 			console.log(result.methodResults[idx]);
 		}
 		return result;
+	}
+	async function repay() {
+		const suggested = await apiGetTxnParams(ChainType.TestNet);
+		const suggestedParams = await apiGetTxnParams(ChainType.TestNet);
+		const contract = await getContractAPI();
+
+		console.log(contract);
+		// Utility function to return an ABIMethod by its name
+		function getMethodByName(name: string): algosdk.ABIMethod {
+			const m = contract.methods.find((mt: algosdk.ABIMethod) => {
+				return mt.name == name;
+			});
+			if (m === undefined) throw Error('Method undefined: ' + name);
+			return m;
+		}
+		const signer = getSignerWC(connector, address, null);
+		suggested.flatFee = true;
+		suggested.fee = 3000;
+		// We initialize the common parameters here, they'll be passed to all the transactions
+		// since they happen to be the same
+		const commonParams = {
+			appID: contract.networks['default'].appID,
+			sender: address,
+			suggestedParams: suggested,
+			signer: signer,
+		};
+		const comp = new algosdk.AtomicTransactionComposer();
+
+		const APP_ID = contract.networks['default'].appID;
+		const xids = [97931298];
+		const ramt = [1030000];
+		const USDC = 10458941;
+		const MNG = 84436122;
+		const LQT = 84436752;
+		suggestedParams.flatFee = true;
+		suggestedParams.fee = 0;
+		const ptxn = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({
+			from: address,
+			to: algosdk.getApplicationAddress(APP_ID),
+			amount: ramt[0],
+			assetIndex: USDC,
+			suggestedParams,
+		});
+		const tws = {
+			txn: ptxn,
+			signer: signer,
+		};
+
+		comp.addMethodCall({
+			method: getMethodByName('repay'),
+			methodArgs: [tws, xids, ramt, xids[0], MNG, LQT],
+			...commonParams,
+		});
+		//const pay_txn = getPayTxn(suggested, sw.getDefaultAccount());
+
+		//comp.addTransaction({ txn: pay_txn, signer: sw.getSigner() });
+
+		// This is not necessary to call but it is helpful for debugging
+		// to see what is being sent to the network
+		const g = comp.buildGroup();
+		console.log(g);
+
+		const result = await comp.execute(testNetClientalgod, 2);
+		console.log(result);
+
+		return result;
+	}
+	async function walletConnectSigner(
+		txns: Transaction[],
+		connector: WalletConnect | null,
+		address: string,
+		signer: algosdk.TransactionSigner | null
+	) {
+		if (!connector) {
+			console.log('No connector found!');
+			return txns.map((tx) => {
+				return {
+					txID: tx.txID(),
+					blob: new Uint8Array(),
+				};
+			});
+		}
+		const txnsToSign = txns.map((txn) => {
+			const encodedTxn = Buffer.from(
+				algosdk.encodeUnsignedTransaction(txn)
+			).toString('base64');
+			if (!signer) {
+				if (algosdk.encodeAddress(txn.from.publicKey) !== address)
+					return { txn: encodedTxn, signer: [] };
+				return { txn: encodedTxn };
+			}
+			if (algosdk.encodeAddress(txn.from.publicKey) !== address)
+				return { txn: encodedTxn, signer: signer };
+			return { txn: encodedTxn };
+		});
+		// sign transaction
+		const requestParams: SignTxnParams = [txnsToSign];
+
+		const request = formatJsonRpcRequest('algo_signTxn', requestParams);
+		//console.log('Request param:', request);
+		const result: string[] = await connector.sendCustomRequest(request);
+
+		//console.log('Raw response:', result);
+		return result.map((element, idx) => {
+			return element
+				? {
+						txID: txns[idx].txID(),
+						blob: new Uint8Array(Buffer.from(element, 'base64')),
+				  }
+				: {
+						txID: txns[idx].txID(),
+						blob: new Uint8Array(),
+				  };
+		});
+	}
+	function getSignerWC(
+		connector: WalletConnect,
+		address: string,
+		signer: algosdk.TransactionSigner | null
+	): TransactionSigner {
+		return async (txnGroup: Transaction[], indexesToSign: number[]) => {
+			const txns = await Promise.resolve(
+				walletConnectSigner(txnGroup, connector, address, signer)
+			);
+			return txns.map((tx) => {
+				return tx.blob;
+			});
+		};
 	}
 
 	return (
@@ -849,6 +988,15 @@ const Main = (props: Props) => {
 									className='bg-gradient-to-r from-gray-100 to-red-300 p-3 rounded-md ring-gray-200 text-sm text-gray-800 hover:ring-1 focus:outline-none active:ring-gray-300 hover:shadow-md'
 								>
 									Check
+								</button>
+								<button
+									onClick={async (e) => {
+										e.preventDefault();
+										await repay();
+									}}
+									className='btn'
+								>
+									Repay
 								</button>
 							</div>
 						)}
